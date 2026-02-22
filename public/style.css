@@ -139,6 +139,21 @@ h2{
   align-items:center;
   justify-content:center;
   white-space:nowrap;
+  color:#000;
+  text-decoration:none;
+}
+
+a.btn{
+  color:#000;
+  text-decoration:none;
+}
+
+a.btn:link,
+a.btn:visited,
+a.btn:hover,
+a.btn:active{
+  color:#000;
+  text-decoration:none;
 }
 
 .btn.primary{
