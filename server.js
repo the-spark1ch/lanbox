@@ -187,7 +187,7 @@ async function listDir(absDir, relDir) {
   return out;
 }
 
-async function serveStatic(req, res, absFile) {
+async function serveStatic(req, res, absFile, forceDownload) {
   let st;
   try {
     st = await fsp.stat(absFile);
@@ -200,7 +200,7 @@ async function serveStatic(req, res, absFile) {
     const index = path.join(absFile, "index.html");
     try {
       const ist = await fsp.stat(index);
-      if (ist.isFile()) return serveStatic(req, res, index);
+      if (ist.isFile()) return serveStatic(req, res, index, false);
     } catch {}
     bad(res, 403, "Directory");
     return;
@@ -213,6 +213,12 @@ async function serveStatic(req, res, absFile) {
 
   res.setHeader("Content-Type", mimeTypeFor(absFile));
   res.setHeader("Content-Length", st.size);
+
+  if (forceDownload) {
+    const fname = path.basename(absFile).replace(/[\r\n"]/g, "_");
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+  }
+
   res.statusCode = 200;
 
   if (req.method === "HEAD") {
@@ -235,7 +241,11 @@ async function handleUploadStream(req, res) {
 
   const nameParam = typeof q.name === "string" ? q.name : "";
   let decodedName = "";
-  try { decodedName = decodeURIComponent(nameParam); } catch { decodedName = nameParam; }
+  try {
+    decodedName = decodeURIComponent(nameParam);
+  } catch {
+    decodedName = nameParam;
+  }
 
   const absDir = toSafeAbsolutePath(UPLOAD_DIR, dir);
   if (!absDir) return bad(res, 403, "Forbidden");
@@ -260,8 +270,12 @@ async function handleUploadStream(req, res) {
   const cleanup = async () => {
     if (finished) return;
     finished = true;
-    try { ws.destroy(); } catch {}
-    try { await fsp.unlink(outPath); } catch {}
+    try {
+      ws.destroy();
+    } catch {}
+    try {
+      await fsp.unlink(outPath);
+    } catch {}
   };
 
   req.on("aborted", cleanup);
@@ -273,11 +287,13 @@ async function handleUploadStream(req, res) {
     finished = true;
     const relPath = joinPosix(dir, finalName);
     return json(res, 201, {
-      files: [{
-        name: finalName,
-        path: relPath,
-        url: "/uploads" + relPath.split("/").map(encodeURIComponent).join("/"),
-      }]
+      files: [
+        {
+          name: finalName,
+          path: relPath,
+          url: "/uploads" + relPath.split("/").map(encodeURIComponent).join("/"),
+        },
+      ],
     });
   });
 
@@ -296,7 +312,7 @@ async function handleApi(req, res, pathname) {
     if (!st.isDirectory()) return bad(res, 400, "Not a directory");
     const items = await listDir(absDir, dir).catch(() => null);
     if (!items) return bad(res, 500, "Cannot list");
-    const parent = dir === "/" ? null : (dir.split("/").slice(0, -1).join("/") || "/");
+    const parent = dir === "/" ? null : dir.split("/").slice(0, -1).join("/") || "/";
     return json(res, 200, { dir, parent, items });
   }
 
@@ -304,7 +320,11 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req, 64 * 1024).catch(() => null);
     if (!body) return bad(res, 400, "Bad body");
     let j;
-    try { j = JSON.parse(body.toString("utf8")); } catch { return bad(res, 400, "Bad json"); }
+    try {
+      j = JSON.parse(body.toString("utf8"));
+    } catch {
+      return bad(res, 400, "Bad json");
+    }
     const dir = normalizeDirParam(j.dir);
     if (!dir) return bad(res, 400, "Bad dir");
     const name = safeSegment(j.name);
@@ -322,6 +342,60 @@ async function handleApi(req, res, pathname) {
       return bad(res, 500, "Cannot create");
     }
     return json(res, 201, { ok: true });
+  }
+
+  if (req.method === "POST" && pathname === "/api/rename") {
+    const body = await readBody(req, 64 * 1024).catch(() => null);
+    if (!body) return bad(res, 400, "Bad body");
+    let j;
+    try {
+      j = JSON.parse(body.toString("utf8"));
+    } catch {
+      return bad(res, 400, "Bad json");
+    }
+
+    const p = normalizeDirParam(j.path);
+    if (!p) return bad(res, 400, "Bad path");
+    if (p === "/") return bad(res, 400, "Cannot rename root");
+
+    const newName = safeSegment(j.name);
+    if (!newName) return bad(res, 400, "Bad name");
+
+    const absOld = toSafeAbsolutePath(UPLOAD_DIR, p);
+    if (!absOld) return bad(res, 403, "Forbidden");
+
+    const st = await fsp.stat(absOld).catch(() => null);
+    if (!st) return bad(res, 404, "Not found");
+
+    const parentRel = p.split("/").slice(0, -1).join("/") || "/";
+    const absParent = toSafeAbsolutePath(UPLOAD_DIR, parentRel);
+    if (!absParent) return bad(res, 403, "Forbidden");
+
+    const absNew = path.join(absParent, newName);
+    if (!absNew.startsWith(absParent + path.sep)) return bad(res, 403, "Forbidden");
+
+    const exists = await fsp.stat(absNew).catch(() => null);
+    if (exists) return bad(res, 409, "Already exists");
+
+    try {
+      await fsp.rename(absOld, absNew);
+    } catch {
+      return bad(res, 500, "Cannot rename");
+    }
+
+    const newRelPath = joinPosix(parentRel, newName);
+    const isDir = st.isDirectory();
+    return json(res, 200, {
+      ok: true,
+      from: p,
+      to: newRelPath,
+      item: {
+        name: newName,
+        type: isDir ? "dir" : "file",
+        path: newRelPath,
+        url: isDir ? null : "/uploads" + newRelPath.split("/").map(encodeURIComponent).join("/"),
+      },
+    });
   }
 
   if (req.method === "DELETE" && pathname === "/api/delete") {
@@ -368,13 +442,13 @@ async function handler(req, res) {
     const abs = toSafeAbsolutePath(UPLOAD_DIR, sub);
     if (!abs) return bad(res, 403, "Forbidden");
     if (!["GET", "HEAD"].includes(req.method || "GET")) return bad(res, 405, "Method Not Allowed");
-    return serveStatic(req, res, abs);
+    return serveStatic(req, res, abs, true);
   }
 
   const abs = toSafeAbsolutePath(ROOT, pathname);
   if (!abs) return bad(res, 403, "Forbidden");
   if (!["GET", "HEAD"].includes(req.method || "GET")) return bad(res, 405, "Method Not Allowed");
-  return serveStatic(req, res, abs);
+  return serveStatic(req, res, abs, false);
 }
 
 (async () => {
