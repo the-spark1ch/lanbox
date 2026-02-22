@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LANBox</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>LANBox</h1>
+      <div class="pathline">
+        <span class="label">Папка:</span>
+        <span id="cwd" class="cwd">/</span>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="controls">
+        <label class="filebtn">
+          <input id="file" name="file" type="file" multiple />
+          <span>Обзор</span>
+        </label>
+
+        <div id="filename" class="filename">Файлы не выбраны</div>
+
+        <button id="uploadBtn" type="button" class="btn primary">Upload</button>
+
+        <input id="folderName" class="text" type="text" placeholder="Новая папка" />
+        <button id="mkdirBtn" type="button" class="btn secondary">Создать</button>
+      </div>
+
+      <div class="progress">
+        <div id="bar" class="bar" style="width:0%"></div>
+      </div>
+      <div id="progtext" class="progtext"></div>
+    </section>
+
+    <section class="card">
+      <h2>Files</h2>
+      <div id="list" class="file-list"></div>
+    </section>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
