@@ -1,1 +1,1 @@
-# lanbox
+# LANBox
