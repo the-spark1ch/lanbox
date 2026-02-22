@@ -31,6 +31,35 @@ async function apiList(dir) {
   return j;
 }
 
+async function apiMkdir(dir, name) {
+  const r = await fetch("/api/mkdir", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dir, name }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "Mkdir error");
+  return j;
+}
+
+async function apiDelete(pathStr) {
+  const r = await fetch("/api/delete?path=" + encodeURIComponent(pathStr), { method: "DELETE" });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "Delete error");
+  return j;
+}
+
+async function apiRename(pathStr, name) {
+  const r = await fetch("/api/rename", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: pathStr, name }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "Rename error");
+  return j;
+}
+
 function safeFilesArray(listLike) {
   const arr = Array.from(listLike || []);
   return arr.filter((f) => f && typeof f.name === "string" && f.name.length);
@@ -57,10 +86,7 @@ function uploadOneXHR(file, dir, uploadedBefore, totalBytes) {
       }
       const overallLoaded = uploadedBefore + e.loaded;
       const pct = totalBytes > 0 ? (overallLoaded / totalBytes) * 100 : 0;
-      setProgress(
-        pct,
-        `Загрузка: ${pct.toFixed(0)}% (${formatBytes(overallLoaded)} / ${formatBytes(totalBytes)})`
-      );
+      setProgress(pct, `Загрузка: ${pct.toFixed(0)}% (${formatBytes(overallLoaded)} / ${formatBytes(totalBytes)})`);
     };
 
     xhr.onerror = () => reject(new Error("Network error"));
@@ -78,24 +104,6 @@ function uploadOneXHR(file, dir, uploadedBefore, totalBytes) {
 
     xhr.send(file);
   });
-}
-
-async function apiMkdir(dir, name) {
-  const r = await fetch("/api/mkdir", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dir, name }),
-  });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || "Mkdir error");
-  return j;
-}
-
-async function apiDelete(pathStr) {
-  const r = await fetch("/api/delete?path=" + encodeURIComponent(pathStr), { method: "DELETE" });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || "Delete error");
-  return j;
 }
 
 function setCwd(dir) {
@@ -180,15 +188,35 @@ function makeInfoBlock(it) {
 
   const meta = document.createElement("div");
   meta.className = "file-meta";
-  meta.textContent =
-    it.type === "dir"
-      ? `${formatTime(it.mtimeMs)}`
-      : `${formatBytes(it.size)} • ${formatTime(it.mtimeMs)}`;
+  meta.textContent = it.type === "dir" ? `${formatTime(it.mtimeMs)}` : `${formatBytes(it.size)} • ${formatTime(it.mtimeMs)}`;
 
   info.appendChild(name);
   info.appendChild(meta);
 
   return info;
+}
+
+async function doRename(it, btn) {
+  const currentName = it && it.name ? String(it.name) : "";
+  const newName = (prompt("Новое имя:", currentName) || "").trim();
+
+  if (!newName || newName === currentName) return;
+
+  if (btn) btn.disabled = true;
+  $("uploadBtn").disabled = true;
+  $("mkdirBtn").disabled = true;
+
+  try {
+    setProgress(0, "");
+    await apiRename(it.path, newName);
+    await refresh();
+  } catch (e) {
+    setProgress(0, e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+    $("uploadBtn").disabled = false;
+    $("mkdirBtn").disabled = false;
+  }
 }
 
 function makeActions(it) {
@@ -197,15 +225,21 @@ function makeActions(it) {
 
   const openBtn = document.createElement(it.type === "dir" ? "button" : "a");
   openBtn.className = "btn secondary";
-  openBtn.textContent = "Открыть";
+  openBtn.textContent = it.type === "dir" ? "Открыть" : "Скачать";
 
   if (it.type === "dir") {
     openBtn.onclick = async () => navigate(it.path);
   } else {
     openBtn.href = it.url;
-    openBtn.target = "_blank";
-    openBtn.rel = "noreferrer";
+    openBtn.download = it.name || "";
   }
+
+  const renBtn = document.createElement("button");
+  renBtn.className = "btn";
+  renBtn.textContent = "Переименовать";
+  renBtn.onclick = async () => {
+    await doRename(it, renBtn);
+  };
 
   const delBtn = document.createElement("button");
   delBtn.className = "btn danger";
@@ -224,6 +258,7 @@ function makeActions(it) {
   };
 
   actions.appendChild(openBtn);
+  actions.appendChild(renBtn);
   actions.appendChild(delBtn);
 
   return actions;
@@ -345,10 +380,7 @@ async function uploadMany(files) {
   try {
     for (let i = 0; i < list.length; i++) {
       const f = list[i];
-      setProgress(
-        totalBytes ? (uploadedBefore / totalBytes) * 100 : 0,
-        `Файл ${i + 1}/${list.length}: ${f.name}`
-      );
+      setProgress(totalBytes ? (uploadedBefore / totalBytes) * 100 : 0, `Файл ${i + 1}/${list.length}: ${f.name}`);
       await uploadOneXHR(f, cwd, uploadedBefore, totalBytes);
       uploadedBefore += f.size || 0;
     }
