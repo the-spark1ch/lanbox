@@ -1,0 +1,21 @@
+[package]
+name = "rust-lanbox"
+version = "0.1.0"
+edition = "2021"
+authors = ["spark1ch"]
+description = "LAN file server"
+license = "MIT"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+futures = "0.3"
+percent-encoding = "2"
+rand = "0.8"
+get_if_addrs = "0.5"
+http-body-util = "0.1"
