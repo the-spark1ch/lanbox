@@ -1,4 +1,4 @@
-# LANBox (Rust)
+# LANBox
 
 LANBox is a lightweight LAN file web server written in **Rust**.  
 It provides a simple browser-based interface for transferring, managing, and sharing files between devices inside a local network.
