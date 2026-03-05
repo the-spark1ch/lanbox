@@ -52,7 +52,10 @@ Expected folders (defaults):
 ```
 lanbox/
 ├─ src/
-│  └─ main.rs
+│  ├─ main.rs
+│  ├─ config.rs
+│  ├─ handlers.rs
+│  └─ util.rs
 ├─ public/        # frontend
 ├─ uploads/       # uploaded files
 ├─ Cargo.toml
