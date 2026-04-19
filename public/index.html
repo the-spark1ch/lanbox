@@ -38,7 +38,25 @@
     </section>
 
     <section class="card">
-      <h2>Files</h2>
+      <div class="section-head">
+        <h2>Файлы</h2>
+        <div class="toolbar">
+          <div class="searchbar">
+            <label class="sortlabel" for="searchInput">Поиск</label>
+            <input id="searchInput" class="text search-input" type="search" placeholder="Поиск в текущей папке" />
+          </div>
+          <div class="sortbar">
+            <label class="sortlabel" for="sortField">Сортировка</label>
+            <select id="sortField" class="select">
+              <option value="name">По имени</option>
+              <option value="mtimeMs">По дате</option>
+              <option value="size">По размеру</option>
+              <option value="type">По типу</option>
+            </select>
+            <button id="sortDirBtn" type="button" class="btn secondary">По возрастанию</button>
+          </div>
+        </div>
+      </div>
       <div id="list" class="file-list"></div>
     </section>
   </div>
