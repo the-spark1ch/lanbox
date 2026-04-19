@@ -57,9 +57,38 @@ body{
 }
 
 h2{
-  margin:0 0 12px 0;
+  margin:0;
   font-size:18px;
   font-weight:650;
+}
+
+.section-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:12px;
+  flex-wrap:wrap;
+}
+
+.toolbar{
+  display:flex;
+  align-items:flex-end;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.searchbar,
+.sortbar{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.sortlabel{
+  font-size:13px;
+  color:#555;
 }
 
 .controls{
@@ -112,7 +141,8 @@ h2{
   font-size:14px;
 }
 
-.text{
+.text,
+.select{
   height:36px;
   padding:0 12px;
   border-radius:8px;
@@ -122,7 +152,12 @@ h2{
   outline:none;
 }
 
-.text:focus{
+.search-input{
+  min-width:240px;
+}
+
+.text:focus,
+.select:focus{
   border-color:#2563eb55;
   box-shadow:0 0 0 3px #2563eb1a;
 }
@@ -334,6 +369,20 @@ a.file-link:hover{
   }
   #mkdirBtn{
     grid-column:2 / 3;
+  }
+  .section-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .toolbar,
+  .searchbar,
+  .sortbar{
+    width:100%;
+  }
+  .search-input,
+  .select{
+    flex:1 1 180px;
+    min-width:0;
   }
   .file-item{
     grid-template-columns:1fr;
