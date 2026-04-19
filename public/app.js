@@ -1,6 +1,14 @@
 const $ = (id) => document.getElementById(id);
 
 let cwd = "/";
+let currentListResp = null;
+const sortState = {
+  field: "name",
+  desc: false,
+};
+const filterState = {
+  query: "",
+};
 
 function setProgress(pct, text) {
   const v = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
@@ -22,6 +30,51 @@ function formatBytes(n) {
 
 function formatTime(ms) {
   return new Date(ms).toLocaleString();
+}
+
+function updateSortButton() {
+  $("sortDirBtn").textContent = sortState.desc ? "По убыванию" : "По возрастанию";
+}
+
+function normalizeForSearch(value) {
+  return String(value || "").trim().toLocaleLowerCase("ru");
+}
+
+function compareItems(a, b) {
+  if (a.type !== b.type) {
+    return a.type === "dir" ? -1 : 1;
+  }
+
+  let result = 0;
+
+  if (sortState.field === "size") {
+    result = (a.size || 0) - (b.size || 0);
+  } else if (sortState.field === "mtimeMs") {
+    result = (a.mtimeMs || 0) - (b.mtimeMs || 0);
+  } else if (sortState.field === "type") {
+    result = String(a.type || "").localeCompare(String(b.type || ""), "ru", { sensitivity: "base" });
+    if (result === 0) {
+      result = String(a.name || "").localeCompare(String(b.name || ""), "ru", { sensitivity: "base" });
+    }
+  } else {
+    result = String(a.name || "").localeCompare(String(b.name || ""), "ru", { sensitivity: "base" });
+  }
+
+  if (result === 0) {
+    result = String(a.name || "").localeCompare(String(b.name || ""), "ru", { sensitivity: "base" });
+  }
+
+  return sortState.desc ? -result : result;
+}
+
+function filterItems(items) {
+  const query = normalizeForSearch(filterState.query);
+  if (!query) return [...(items || [])];
+  return (items || []).filter((item) => normalizeForSearch(item.name).includes(query));
+}
+
+function getVisibleItems(items) {
+  return filterItems(items).sort(compareItems);
 }
 
 async function apiList(dir) {
@@ -86,7 +139,10 @@ function uploadOneXHR(file, dir, uploadedBefore, totalBytes) {
       }
       const overallLoaded = uploadedBefore + e.loaded;
       const pct = totalBytes > 0 ? (overallLoaded / totalBytes) * 100 : 0;
-      setProgress(pct, `Загрузка: ${pct.toFixed(0)}% (${formatBytes(overallLoaded)} / ${formatBytes(totalBytes)})`);
+      setProgress(
+        pct,
+        `Загрузка: ${pct.toFixed(0)}% (${formatBytes(overallLoaded)} / ${formatBytes(totalBytes)})`,
+      );
     };
 
     xhr.onerror = () => reject(new Error("Network error"));
@@ -131,7 +187,7 @@ function makeThumb(it) {
   if (it.type === "dir") {
     const t = document.createElement("div");
     t.className = "thumb-text";
-    t.textContent = "📁";
+    t.textContent = "DIR";
     wrap.appendChild(t);
     return wrap;
   }
@@ -188,7 +244,9 @@ function makeInfoBlock(it) {
 
   const meta = document.createElement("div");
   meta.className = "file-meta";
-  meta.textContent = it.type === "dir" ? `${formatTime(it.mtimeMs)}` : `${formatBytes(it.size)} • ${formatTime(it.mtimeMs)}`;
+  meta.textContent = it.type === "dir"
+    ? `${formatTime(it.mtimeMs)}`
+    : `${formatBytes(it.size)} • ${formatTime(it.mtimeMs)}`;
 
   info.appendChild(name);
   info.appendChild(meta);
@@ -265,6 +323,7 @@ function makeActions(it) {
 }
 
 function render(listResp) {
+  currentListResp = listResp;
   setCwd(listResp.dir);
 
   const list = $("list");
@@ -281,7 +340,7 @@ function render(listResp) {
     thumb.className = "thumb";
     const t = document.createElement("div");
     t.className = "thumb-text";
-    t.textContent = "📁";
+    t.textContent = "DIR";
     thumb.appendChild(t);
     left.appendChild(thumb);
 
@@ -317,15 +376,17 @@ function render(listResp) {
     list.appendChild(item);
   }
 
-  if (!listResp.items.length) {
+  const visibleItems = getVisibleItems(listResp.items);
+
+  if (!visibleItems.length) {
     const empty = document.createElement("div");
     empty.className = "progtext";
-    empty.textContent = "Пусто";
+    empty.textContent = filterState.query ? "Ничего не найдено" : "Пусто";
     list.appendChild(empty);
     return;
   }
 
-  for (const it of listResp.items) {
+  for (const it of visibleItems) {
     const item = document.createElement("div");
     item.className = "file-item";
 
@@ -348,6 +409,8 @@ async function refresh() {
 }
 
 async function navigate(dir) {
+  filterState.query = "";
+  $("searchInput").value = "";
   const data = await apiList(dir);
   render(data);
   history.replaceState(null, "", "#dir=" + encodeURIComponent(cwd));
@@ -380,7 +443,10 @@ async function uploadMany(files) {
   try {
     for (let i = 0; i < list.length; i++) {
       const f = list[i];
-      setProgress(totalBytes ? (uploadedBefore / totalBytes) * 100 : 0, `Файл ${i + 1}/${list.length}: ${f.name}`);
+      setProgress(
+        totalBytes ? (uploadedBefore / totalBytes) * 100 : 0,
+        `Файл ${i + 1}/${list.length}: ${f.name}`,
+      );
       await uploadOneXHR(f, cwd, uploadedBefore, totalBytes);
       uploadedBefore += f.size || 0;
     }
@@ -427,6 +493,32 @@ $("mkdirBtn").onclick = async () => {
   }
 };
 
+$("searchInput").addEventListener("input", (e) => {
+  filterState.query = e.target.value || "";
+  if (currentListResp) {
+    render(currentListResp);
+  }
+});
+
+$("sortField").addEventListener("change", async (e) => {
+  sortState.field = e.target.value;
+  if (currentListResp) {
+    render(currentListResp);
+    return;
+  }
+  await refresh();
+});
+
+$("sortDirBtn").onclick = async () => {
+  sortState.desc = !sortState.desc;
+  updateSortButton();
+  if (currentListResp) {
+    render(currentListResp);
+    return;
+  }
+  await refresh();
+};
+
 document.addEventListener("dragover", (e) => {
   e.preventDefault();
 });
@@ -449,6 +541,8 @@ window.addEventListener("hashchange", async () => {
 });
 
 (async () => {
+  updateSortButton();
+  $("sortField").value = sortState.field;
   const d = readHashDir();
   try {
     await navigate(d);
