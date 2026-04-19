@@ -69,7 +69,11 @@ struct RenameResponse {
     item: RenameItem,
 }
 
-async fn handle_upload_stream(st: Arc<AppState>, uri: Uri, req: Request<Body>) -> axum::response::Response {
+async fn handle_upload_stream(
+    st: Arc<AppState>,
+    uri: Uri,
+    req: Request<Body>,
+) -> axum::response::Response {
     let q = parse_query(&uri);
     let dir = match normalize_dir_param(q.get("dir")) {
         Some(d) => d,
@@ -111,7 +115,10 @@ async fn handle_upload_stream(st: Arc<AppState>, uri: Uri, req: Request<Body>) -
         .await
     {
         Ok(f) => f,
-        Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot create file").into_response(),
+        Err(_) => {
+            return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot create file")
+                .into_response();
+        }
     };
 
     let stream = req.into_body().into_data_stream();
@@ -127,13 +134,23 @@ async fn handle_upload_stream(st: Arc<AppState>, uri: Uri, req: Request<Body>) -
         url.push_str(&encode_uri_component(seg));
     }
 
-    (StatusCode::CREATED, Json(UploadResponse {
-        files: vec![UploadFileItem { name: final_name, path: rel_path, url }],
-    }))
+    (
+        StatusCode::CREATED,
+        Json(UploadResponse {
+            files: vec![UploadFileItem {
+                name: final_name,
+                path: rel_path,
+                url,
+            }],
+        }),
+    )
         .into_response()
 }
 
-pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>) -> axum::response::Response {
+pub async fn handle_request(
+    State(st): State<Arc<AppState>>,
+    req: Request<Body>,
+) -> axum::response::Response {
     let method = req.method().clone();
     let uri = req.uri().clone();
     let headers = req.headers().clone();
@@ -149,7 +166,8 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
             Method::GET | Method::POST | Method::PUT | Method::DELETE | Method::HEAD
         );
         if !allowed {
-            return json_error(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed").into_response();
+            return json_error(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed")
+                .into_response();
         }
 
         if method == Method::GET && pathname == "/api/list" {
@@ -171,7 +189,10 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
             }
             let items = match list_dir(&abs_dir, &dir).await {
                 Ok(v) => v,
-                Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot list").into_response(),
+                Err(_) => {
+                    return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot list")
+                        .into_response();
+                }
             };
             let parent = if dir == "/" {
                 None
@@ -215,7 +236,8 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
                     if e.kind() == io::ErrorKind::AlreadyExists {
                         return json_error(StatusCode::CONFLICT, "Already exists").into_response();
                     }
-                    return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot create").into_response();
+                    return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot create")
+                        .into_response();
                 }
             }
         }
@@ -254,7 +276,11 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
                 let mut parts: Vec<&str> = p.split('/').filter(|s| !s.is_empty()).collect();
                 parts.pop();
                 let out = format!("/{}", parts.join("/"));
-                if out.is_empty() { "/".to_string() } else { out }
+                if out.is_empty() {
+                    "/".to_string()
+                } else {
+                    out
+                }
             };
 
             let abs_parent = match to_safe_absolute_path(&st.upload_dir, &parent_rel) {
@@ -272,7 +298,8 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
             }
 
             if fs::rename(&abs_old, &abs_new).await.is_err() {
-                return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot rename").into_response();
+                return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot rename")
+                    .into_response();
             }
 
             let new_rel = join_posix(&parent_rel, &new_name);
@@ -288,17 +315,20 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
                 Some(u)
             };
 
-            return (StatusCode::OK, Json(RenameResponse {
-                ok: true,
-                from: p,
-                to: new_rel.clone(),
-                item: RenameItem {
-                    name: new_name,
-                    item_type: if is_dir { "dir" } else { "file" }.to_string(),
-                    path: new_rel,
-                    url,
-                },
-            }))
+            return (
+                StatusCode::OK,
+                Json(RenameResponse {
+                    ok: true,
+                    from: p,
+                    to: new_rel.clone(),
+                    item: RenameItem {
+                        name: new_name,
+                        item_type: if is_dir { "dir" } else { "file" }.to_string(),
+                        path: new_rel,
+                        url,
+                    },
+                }),
+            )
                 .into_response();
         }
 
@@ -327,7 +357,8 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
             };
 
             if del_res.is_err() {
-                return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot delete").into_response();
+                return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Cannot delete")
+                    .into_response();
             }
             return (StatusCode::OK, Json(OkResponse { ok: true })).into_response();
         }
@@ -347,7 +378,11 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
                     .unwrap();
                 return handle_upload_stream(st.clone(), uri, req2).await;
             }
-            return json_error(StatusCode::UNSUPPORTED_MEDIA_TYPE, "Use application/octet-stream").into_response();
+            return json_error(
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Use application/octet-stream",
+            )
+            .into_response();
         }
 
         return json_error(StatusCode::NOT_FOUND, "Unknown API").into_response();
@@ -364,7 +399,8 @@ pub async fn handle_request(State(st): State<Arc<AppState>>, req: Request<Body>)
             None => return json_error(StatusCode::FORBIDDEN, "Forbidden").into_response(),
         };
         if !(method == Method::GET || method == Method::HEAD) {
-            return json_error(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed").into_response();
+            return json_error(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed")
+                .into_response();
         }
         return serve_static_file(&method, &abs, true).await;
     }
